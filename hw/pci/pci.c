@@ -208,14 +208,14 @@ static void pci_change_irq_level(PCIDevice *pci_dev, int irq_num, int change)
 {
     PCIBus *bus;
     for (;;) {
-        bus = pci_dev->bus;
-        irq_num = bus->map_irq(pci_dev, irq_num);
+        bus = pci_dev->bus; // 拿到PCI 设备总线
+        irq_num = bus->map_irq(pci_dev, irq_num); // 调用总线回调 ，根总线对应的就是 pci_slot_get_pirq （在 pc_init1 初始化）(pci_bus_irqs 完成注册)
         if (bus->set_irq)
             break;
         pci_dev = bus->parent_dev;
     }
     bus->irq_count[irq_num] += change;
-    bus->set_irq(bus->irq_opaque, irq_num, bus->irq_count[irq_num] != 0);
+    bus->set_irq(bus->irq_opaque, irq_num, bus->irq_count[irq_num] != 0); //  piix3_set_irq 在 pc_init1 初始化 (pci_bus_irqs 完成注册)
 }
 
 int pci_bus_get_irq_level(PCIBus *bus, int irq_num)
@@ -1365,15 +1365,15 @@ static void pci_irq_handler(void *opaque, int irq_num, int level)
     PCIDevice *pci_dev = opaque;
     int change;
 
-    change = level - pci_irq_state(pci_dev, irq_num);
+    change = level - pci_irq_state(pci_dev, irq_num);  //判断当前中断线状态是否改变，如果没有改变就直接返回
     if (!change)
         return;
-
+    // 改变了就会调用pci_set_irq_state以及pci_update_irq_status设置设备状态
     pci_set_irq_state(pci_dev, irq_num, level);
     pci_update_irq_status(pci_dev);
     if (pci_irq_disabled(pci_dev))
         return;
-    pci_change_irq_level(pci_dev, irq_num, change);
+    pci_change_irq_level(pci_dev, irq_num, change); // 触发中断
 }
 
 static inline int pci_intx(PCIDevice *pci_dev)
@@ -1390,7 +1390,7 @@ qemu_irq pci_allocate_irq(PCIDevice *pci_dev)
 
 void pci_set_irq(PCIDevice *pci_dev, int level)
 {
-    int intx = pci_intx(pci_dev);
+    int intx = pci_intx(pci_dev); // 调用pci_intx函数得到设备使用的INTX引脚
     pci_irq_handler(pci_dev, intx, level);
 }
 

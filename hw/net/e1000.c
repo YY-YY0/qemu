@@ -1597,7 +1597,7 @@ static void pci_e1000_realize(PCIDevice *pci_dev, Error **errp)
 
     /* TODO: RST# value should be 0, PCI spec 6.2.4 */
     pci_conf[PCI_CACHE_LINE_SIZE] = 0x10;
-
+    // e1000 写入 PCI 配置空间 0x3d . 这里是使用了INTA 引脚
     pci_conf[PCI_INTERRUPT_PIN] = 1; /* interrupt pin A */
 
     e1000_mmio_setup(d);

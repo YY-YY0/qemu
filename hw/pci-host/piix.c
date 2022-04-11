@@ -462,14 +462,14 @@ static void piix3_set_irq_level(PIIX3State *piix3, int pirq, int level)
 {
     int pic_irq;
 
-    pic_irq = piix3->dev.config[PIIX_PIRQC + pirq];
+    pic_irq = piix3->dev.config[PIIX_PIRQC + pirq]; // 获取实际的中断线
     if (pic_irq >= PIIX_NUM_PIC_IRQS) {
         return;
     }
-
+    // 调用 PCI 总线的 set_irq 回调
     piix3_set_irq_level_internal(piix3, pirq, level);
 
-    piix3_set_irq_pic(piix3, pic_irq);
+    piix3_set_irq_pic(piix3, pic_irq); // 向虚拟机内部操作系统触发中断
 }
 
 static void piix3_set_irq(void *opaque, int pirq, int level)
