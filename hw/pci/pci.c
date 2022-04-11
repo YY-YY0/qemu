@@ -1268,7 +1268,7 @@ static void pci_update_mappings(PCIDevice *d)
         /* this region isn't registered */
         if (!r->size)
             continue;
-
+        // 从pci_bar_address中得到BAR的地址
         new_addr = pci_bar_address(d, i, r->type, r->size);
 
         /* This bar isn't changed */
@@ -1283,17 +1283,19 @@ static void pci_update_mappings(PCIDevice *d)
                                           i, r->addr, r->size);
             memory_region_del_subregion(r->address_space, r->memory);
         }
+	// 然后复制BAR的地址到io_regions中的addr
         r->addr = new_addr;
         if (r->addr != PCI_BAR_UNMAPPED) {
             trace_pci_update_mappings_add(d, pci_bus_num(d->bus),
                                           PCI_SLOT(d->devfn),
                                           PCI_FUNC(d->devfn),
                                           i, r->addr, r->size);
+	    // 调用memory_region_add_subregion_overlap将该地址添加到PCI MemoryRegion，作为它的一个子MR
             memory_region_add_subregion_overlap(r->address_space,
                                                 r->addr, r->memory, 1);
         }
     }
-
+    //再经过内存提交，就会在QEMU中建立起内存分派表，从而在虚拟机访问这块MMIO内存的时候，由其对应设备的回调函数来处理。
     pci_update_vga(d);
 }
 
@@ -1329,7 +1331,7 @@ void pci_default_write_config(PCIDevice *d, uint32_t addr, uint32_t val_in, int 
 {
     int i, was_irq_disabled = pci_irq_disabled(d);
     uint32_t val = val_in;
-
+    // 首先将传过来的值写入了PCI设备的配置空间，因为地址是BAR的地址，所以后面会调用pci_update_mappings
     for (i = 0; i < l; val >>= 8, ++i) {
         uint8_t wmask = d->wmask[addr + i];
         uint8_t w1cmask = d->w1cmask[addr + i];
@@ -1341,7 +1343,7 @@ void pci_default_write_config(PCIDevice *d, uint32_t addr, uint32_t val_in, int 
         ranges_overlap(addr, l, PCI_ROM_ADDRESS, 4) ||
         ranges_overlap(addr, l, PCI_ROM_ADDRESS1, 4) ||
         range_covers_byte(addr, l, PCI_COMMAND))
-        pci_update_mappings(d);
+        pci_update_mappings(d); //
 
     if (range_covers_byte(addr, l, PCI_COMMAND)) {
         pci_update_irq_disabled(d, was_irq_disabled);
@@ -1964,7 +1966,7 @@ static void pci_qdev_realize(DeviceState *qdev, Error **errp)
     // 0. 注册&&完成PCI总线的初始化工作
     bus = PCI_BUS(qdev_get_parent_bus(qdev));
     // dev_fn 为 -1 时，总线自己选插槽，选好插槽会保存在 PCIDevice devfn
-    // 如果在设备中指定 addr 那么会把 addr 当做 devfn 
+    // 如果在设备中指定 addr 那么会把 addr 当做 devfn
     // 设置PCIDevice结构体中的各个域，包括调用pci_init_bus_master函数初始化PCIDevice中的AddressSpace成员bus_master_as及其对应的MR
     // 调用pci_config_alloc分配PCI设备的配置空间，cmask用来检测相关的能力，wmask用来控制读写，w1cmask用来实现RW1C。
     pci_dev = do_pci_register_device(pci_dev, bus,
