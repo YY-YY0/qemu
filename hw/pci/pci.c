@@ -991,14 +991,15 @@ static PCIDevice *do_pci_register_device(PCIDevice *pci_dev, PCIBus *bus,
 
     pci_dev->devfn = devfn;
     pci_dev->requester_id_cache = pci_req_id_cache_get(pci_dev);
-
+    //包括调用pci_init_bus_master函数初始化PCIDevice中的AddressSpace成员bus_master_as及其对应的MR
     if (qdev_hotplug) {
         pci_init_bus_master(pci_dev);
     }
     pstrcpy(pci_dev->name, sizeof(pci_dev->name), name);
     pci_dev->irq_state = 0;
+    // pci_config_alloc 调用pci_config_alloc分配PCI设备的配置空间，cmask用来检测相关的能力，wmask用来控制读写，w1cmask用来实现RW1C。
     pci_config_alloc(pci_dev);
-
+    // 由此完成一些初始化的设置，如vendor_id等。
     pci_config_set_vendor_id(pci_dev->config, pc->vendor_id);
     pci_config_set_device_id(pci_dev->config, pc->device_id);
     pci_config_set_revision(pci_dev->config, pc->revision);
@@ -1030,13 +1031,14 @@ static PCIDevice *do_pci_register_device(PCIDevice *pci_dev, PCIBus *bus,
         do_pci_unregister_device(pci_dev);
         return NULL;
     }
-
+    // 然后是设置设备的config_read和config_write函数，如果相关的子类自己没有设置，那使用默认的pci_default_read/write_config函数。
     if (!config_read)
         config_read = pci_default_read_config;
     if (!config_write)
         config_write = pci_default_write_config;
     pci_dev->config_read = config_read;
     pci_dev->config_write = config_write;
+    // 最后将该device复制到bus->devices数组中。
     bus->devices[devfn] = pci_dev;
     pci_dev->version_id = 2; /* Current pci device vmstate version */
     return pci_dev;
@@ -1088,7 +1090,10 @@ void pci_register_bar(PCIDevice *pci_dev, int region_num,
         exit(1);
     }
 
+    // 1.首先根据region_num找到PCIDevice->io_regions数组中对应的项。
+    // PCI设备的MMIO存放在PCIIORegion结构体中，结构体中保存了MMIO的地址、大小、类型等信息
     r = &pci_dev->io_regions[region_num];
+    //得到region_num表示的PCIIORegion之后进行一些初始化设置
     r->addr = PCI_BAR_UNMAPPED;
     r->size = size;
     r->type = type;
@@ -1103,9 +1108,10 @@ void pci_register_bar(PCIDevice *pci_dev, int region_num,
         wmask |= PCI_ROM_ADDRESS_ENABLE;
     }
 
+    // 1.然后将该 PCIIORegion region的type写到相应PCI配置空间对应BAR的地址处
     addr = pci_bar(pci_dev, region_num);
     pci_set_long(pci_dev->config + addr, type);
-
+    // 最后设置PCIDevice中wmask和cmask的值
     if (!(r->type & PCI_BASE_ADDRESS_SPACE_IO) &&
         r->type & PCI_BASE_ADDRESS_MEM_TYPE_64) {
         pci_set_quad(pci_dev->wmask + addr, wmask);
@@ -1955,7 +1961,12 @@ static void pci_qdev_realize(DeviceState *qdev, Error **errp)
         pci_dev->cap_present |= QEMU_PCI_CAP_EXPRESS;
     }
 
+    // 0. 注册&&完成PCI总线的初始化工作
     bus = PCI_BUS(qdev_get_parent_bus(qdev));
+    // dev_fn 为 -1 时，总线自己选插槽，选好插槽会保存在 PCIDevice devfn
+    // 如果在设备中指定 addr 那么会把 addr 当做 devfn 
+    // 设置PCIDevice结构体中的各个域，包括调用pci_init_bus_master函数初始化PCIDevice中的AddressSpace成员bus_master_as及其对应的MR
+    // 调用pci_config_alloc分配PCI设备的配置空间，cmask用来检测相关的能力，wmask用来控制读写，w1cmask用来实现RW1C。
     pci_dev = do_pci_register_device(pci_dev, bus,
                                      object_get_typename(OBJECT(qdev)),
                                      pci_dev->devfn, errp);
@@ -1963,6 +1974,7 @@ static void pci_qdev_realize(DeviceState *qdev, Error **errp)
         return;
 
     if (pc->realize) {
+    	//2. PCI 设备的具现化,调用PCI设备所属的class的realize函数，即pc->realize函数。
         pc->realize(pci_dev, &local_err);
         if (local_err) {
             error_propagate(errp, local_err);
@@ -1977,7 +1989,10 @@ static void pci_qdev_realize(DeviceState *qdev, Error **errp)
         pci_dev->romfile = g_strdup(pc->romfile);
         is_default_rom = true;
     }
-
+    //2. 最后调用pci_add_option_rom加载PCI设备的ROM。
+    // (1)有的设备有自己的ROM，如果QEMU命令行没有指定ROM，
+    // (2)但是设备的class指定了ROM，那就使用默认ROM，
+    // (3)pci_add_option_rom的参数is_default_rom设置为true，否则使用QEMU命令行传过来的romfile文件。
     pci_add_option_rom(pci_dev, is_default_rom, &local_err);
     if (local_err) {
         error_propagate(errp, local_err);
@@ -2148,7 +2163,7 @@ static void pci_add_option_rom(PCIDevice *pdev, bool is_default_rom,
         return;
     if (strlen(pdev->romfile) == 0)
         return;
-
+    //pci_add_option_rom函数按照pdev->rom_bar是否为true来决定是使用fw_cfg中的文件还是创建一个rom bar，这个值默认是true。
     if (!pdev->rom_bar) {
         /*
          * Load rom via fw_cfg instead of creating a rom bar,
@@ -2173,7 +2188,7 @@ static void pci_add_option_rom(PCIDevice *pdev, bool is_default_rom,
         }
         return;
     }
-
+    // 接着是得到ROM文件的路径和大小
     path = qemu_find_file(QEMU_FILE_TYPE_BIOS, pdev->romfile);
     if (path == NULL) {
         path = g_strdup(pdev->romfile);
@@ -2202,6 +2217,7 @@ static void pci_add_option_rom(PCIDevice *pdev, bool is_default_rom,
     memory_region_init_ram(&pdev->rom, OBJECT(pdev), name, size, &error_fatal);
     vmstate_register_ram(&pdev->rom, &pdev->qdev);
     ptr = memory_region_get_ram_ptr(&pdev->rom);
+    //然后调用load_image将文件加载到指定的ROM中。
     load_image(path, ptr);
     g_free(path);
 
@@ -2209,7 +2225,7 @@ static void pci_add_option_rom(PCIDevice *pdev, bool is_default_rom,
         /* Only the default rom images will be patched (if needed). */
         pci_patch_ids(pdev, ptr, size);
     }
-
+    // 最后调用pci_register_bar将该ROM注册到设备的PCIBAR中。
     pci_register_bar(pdev, PCI_ROM_SLOT, 0, &pdev->rom);
 }
 
@@ -2488,11 +2504,11 @@ static void pci_device_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *k = DEVICE_CLASS(klass);
     PCIDeviceClass *pc = PCI_DEVICE_CLASS(klass);
-
+    // 重写父类 DEVICE_CLASS realize/unrealize 函数
     k->realize = pci_qdev_realize;
     k->unrealize = pci_qdev_unrealize;
-    k->bus_type = TYPE_PCI_BUS;
-    k->props = pci_props;
+    k->bus_type = TYPE_PCI_BUS; // 设备挂接总线
+    k->props = pci_props; //PCI 设备属性 （可以在命令行指定）
     pc->realize = pci_default_realize;
 }
 

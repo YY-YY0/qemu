@@ -63,6 +63,7 @@ void pci_host_config_write_common(PCIDevice *pci_dev, uint32_t addr,
 
     trace_pci_cfg_write(pci_dev->name, PCI_SLOT(pci_dev->devfn),
                         PCI_FUNC(pci_dev->devfn), addr, val);
+    // pci_host_config_write_common函数在做一些基本的检查之后调用了PCI设备自己的config_write回调函数
     pci_dev->config_write(pci_dev, addr, val, MIN(len, limit - addr));
 }
 
@@ -88,8 +89,8 @@ uint32_t pci_host_config_read_common(PCIDevice *pci_dev, uint32_t addr,
 
 void pci_data_write(PCIBus *s, uint32_t addr, uint32_t val, int len)
 {
-    PCIDevice *pci_dev = pci_dev_find_by_addr(s, addr);
-    uint32_t config_addr = addr & (PCI_CONFIG_SPACE_SIZE - 1);
+    PCIDevice *pci_dev = pci_dev_find_by_addr(s, addr); // pci_data_write函数首先通过CONFGADDR中的值调用pci_dev_find_by_addr找到需要访问的PCI设备
+    uint32_t config_addr = addr & (PCI_CONFIG_SPACE_SIZE - 1); // addr和（PCI_CONFIG_SPACE_SIZE-1）进行与操作从而将addr限制在了PCI配置空间的大小256字节以内。
 
     if (!pci_dev) {
         return;
@@ -97,6 +98,7 @@ void pci_data_write(PCIBus *s, uint32_t addr, uint32_t val, int len)
 
     PCI_DPRINTF("%s: %s: addr=%02" PRIx32 " val=%08" PRIx32 " len=%d\n",
                 __func__, pci_dev->name, config_addr, val, len);
+    // 然后再调用pci_host_config_write_common读写该设备的PCI配置空间。
     pci_host_config_write_common(pci_dev, config_addr, PCI_CONFIG_SPACE_SIZE,
                                  val, len);
 }
@@ -118,7 +120,7 @@ uint32_t pci_data_read(PCIBus *s, uint32_t addr, int len)
 
     return val;
 }
-
+// 北桥读写 CONFGADDR 配置寄存器 接口
 static void pci_host_config_write(void *opaque, hwaddr addr,
                                   uint64_t val, unsigned len)
 {
@@ -131,7 +133,7 @@ static void pci_host_config_write(void *opaque, hwaddr addr,
     }
     s->config_reg = val;
 }
-
+// 北桥读写 CONFGADDR 配置寄存器 接口
 static uint64_t pci_host_config_read(void *opaque, hwaddr addr,
                                      unsigned len)
 {
@@ -142,22 +144,24 @@ static uint64_t pci_host_config_read(void *opaque, hwaddr addr,
                 __func__, addr, len, val);
     return val;
 }
-
+// 北桥读写 CONFGDATA 配置寄存器 接口
 static void pci_host_data_write(void *opaque, hwaddr addr,
                                 uint64_t val, unsigned len)
 {
     PCIHostState *s = opaque;
     PCI_DPRINTF("write addr " TARGET_FMT_plx " len %d val %x\n",
                 addr, len, (unsigned)val);
+    // 首先判断配置寄存器的值中的31位是否使能，使能的情况下调用pci_data_write开始写设备的配置空间
     if (s->config_reg & (1u << 31))
         pci_data_write(s->bus, s->config_reg | (addr & 3), val, len);
 }
-
+// 北桥读写 CONFGDATA 配置寄存器 接口
 static uint64_t pci_host_data_read(void *opaque,
                                    hwaddr addr, unsigned len)
 {
     PCIHostState *s = opaque;
     uint32_t val;
+    // 首先判断配置寄存器的值中的31位是否使能，使能的情况下调用 pci_data_read 开始写设备的配置空间
     if (!(s->config_reg & (1U << 31))) {
         return 0xffffffff;
     }

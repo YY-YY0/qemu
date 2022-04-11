@@ -38,11 +38,12 @@
 #define PCI_HOST_BRIDGE_GET_CLASS(obj) \
      OBJECT_GET_CLASS(PCIHostBridgeClass, (obj), TYPE_PCI_HOST_BRIDGE)
 
+// 北桥 PCI 设备结构体 - i440fx_pcihost_initfn 赋值
 struct PCIHostState {
     SysBusDevice busdev;
 
-    MemoryRegion conf_mem;
-    MemoryRegion data_mem;
+    MemoryRegion conf_mem; // 配置地址寄存器（CONFGADD），用于选择PCI 设备
+    MemoryRegion data_mem; // 配置数据寄存器（CONFGDATA），当其CONFADDR寄存器最高位为1时，会用于对CONFGADD 指定的设备进行配置
     MemoryRegion mmcfg;
     uint32_t config_reg;
     PCIBus *bus;

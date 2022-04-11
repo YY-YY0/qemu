@@ -273,7 +273,8 @@ static void i440fx_pcihost_get_pci_hole64_end(Object *obj, Visitor *v,
 static void i440fx_pcihost_initfn(Object *obj)
 {
     PCIHostState *s = PCI_HOST_BRIDGE(obj);
-
+    // 初始化北桥PCI 设备 PCIHostState   结构的 CONFGDATA 和 CONFGADD
+    // 其对应的MemoryRegionOps分别是pci_host_conf_le_ops和pci_host_data_le_ops。
     memory_region_init_io(&s->conf_mem, obj, &pci_host_conf_le_ops, s,
                           "pci-conf-idx", 4);
     memory_region_init_io(&s->data_mem, obj, &pci_host_data_le_ops, s,
@@ -298,13 +299,18 @@ static void i440fx_pcihost_initfn(Object *obj)
 
 static void i440fx_pcihost_realize(DeviceState *dev, Error **errp)
 {
+    // 北桥具现化函数，进行IO地址注册
     PCIHostState *s = PCI_HOST_BRIDGE(dev);
     SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
-
+    // sysbus_add_io函数会将指定MemoryRegion设置为系统I/O地址空间的子MemoryRegion
     sysbus_add_io(sbd, 0xcf8, &s->conf_mem);
+    // sysbus_init_ioports会对SysBusDevice中的PIO端口数组初始化
+    // 将北桥的CONFADDR和CONFDATA两个寄存器地址加入到系统I/O地址空间中
+    // CONFADDR使用从端口0xcf8开始的4个端口
     sysbus_init_ioports(sbd, 0xcf8, 4);
 
     sysbus_add_io(sbd, 0xcfc, &s->data_mem);
+    // CONFDATA使用从0xcfc开始的4个端口
     sysbus_init_ioports(sbd, 0xcfc, 4);
 }
 

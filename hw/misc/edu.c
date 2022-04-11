@@ -222,10 +222,15 @@ static uint64_t edu_mmio_read(void *opaque, hwaddr addr, unsigned size)
     return val;
 }
 
+//opaque表示的是设备的对象
+//addr表示虚拟机读的地址在该MMIO中的偏移地址，
+//val表示写的值，
+//size表示写的值大小(通常有单字节、双字节、四字节以及八字节)
 static void edu_mmio_write(void *opaque, hwaddr addr, uint64_t val,
                 unsigned size)
 {
     EduState *edu = opaque;
+    //首先，需要检查读写地址以及大小是否在范围之内。
 
     if (addr < 0x80 && size != 4) {
         return;
@@ -235,6 +240,8 @@ static void edu_mmio_write(void *opaque, hwaddr addr, uint64_t val,
         return;
     }
 
+    //然后根据具体的地址来进行适当的行为，这些行为可以是简单地设置一个值，
+    //如这里的写0x04地址，可以是将中断设置为高电平（写0x60地址）或者是将中断设置为低电平（写0x64地址），还可以是通过dma读写设备虚拟机的物理地址（写0x80地址）。
     switch (addr) {
     case 0x04:
         edu->addr4 = ~val;
@@ -283,10 +290,11 @@ static void edu_mmio_write(void *opaque, hwaddr addr, uint64_t val,
     }
 }
 
+//edu_mmio_ops的类型为MemoryRegionOps，其中的read和write函数分别表示该MMIO的读写回调
 static const MemoryRegionOps edu_mmio_ops = {
     .read = edu_mmio_read,
     .write = edu_mmio_write,
-    .endianness = DEVICE_NATIVE_ENDIAN,
+    .endianness = DEVICE_NATIVE_ENDIAN, // 表示字节大小端
 };
 
 /*
@@ -350,14 +358,19 @@ static void pci_edu_realize(PCIDevice *pdev, Error **errp)
     qemu_thread_create(&edu->thread, "edu", edu_fact_thread,
                        edu, QEMU_THREAD_JOINABLE);
 
+    // 1. pci_config_set_interrupt_pin设置了PCI设备配置空间的PCI_INTERRUPT_PIN字节
     pci_config_set_interrupt_pin(pci_conf, 1);
 
+    // 2. msi_init函数会设置PCI配置空间与MSI中断相关的数据。
     if (msi_init(pdev, 0, 1, true, false, errp)) {
         return;
     }
 
+    // 3. memory_region_init_io初始化了一个edu->mmio，表示的是该设备的MMIO，其大小为1MB
+    // 指定 EDU 设备 PCI 操作的回调函数 edu_mmio_ops
     memory_region_init_io(&edu->mmio, OBJECT(edu), &edu_mmio_ops, edu,
                     "edu-mmio", 1 << 20);
+    // 4. 调用pci_register_bar将该MMIO注册为设备的第0号BAR
     pci_register_bar(pdev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &edu->mmio);
 }
 
