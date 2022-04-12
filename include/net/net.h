@@ -28,8 +28,8 @@ struct MACAddr {
 /* qdev nic properties */
 
 typedef struct NICPeers {
-    NetClientState *ncs[MAX_QUEUE_NUM];
-    int32_t queues;
+    NetClientState *ncs[MAX_QUEUE_NUM]; // 前端网卡对应后端设备的 NetClientState ，最多支持 MAX_QUEUE_NUM 个队列 ，但是大部分前端的模拟网卡设备都不支持多队列，只有virtio-net支持
+    int32_t queues; // 表示队列数 （tap 队列数）
 } NICPeers;
 
 typedef struct NICConf {
@@ -65,10 +65,11 @@ typedef int (SetVnetBE)(NetClientState *, bool);
 typedef struct SocketReadState SocketReadState;
 typedef void (SocketReadStateFinalize)(SocketReadState *rs);
 
+// 在 e1000 的定义是 net_e1000_info
 typedef struct NetClientInfo {
     NetClientDriver type;
-    size_t size;
-    NetReceive *receive;
+    size_t size; // 指定大小
+    NetReceive *receive; // 该函数用来进行网络端点的收包
     NetReceive *receive_raw;
     NetReceiveIOV *receive_iov;
     NetCanReceive *can_receive;
@@ -87,20 +88,20 @@ typedef struct NetClientInfo {
 } NetClientInfo;
 
 struct NetClientState {
-    NetClientInfo *info;
-    int link_down;
-    QTAILQ_ENTRY(NetClientState) next;
-    NetClientState *peer;
-    NetQueue *incoming_queue;
+    NetClientInfo *info; //info成员用来表示网卡的基本信息，主要是网卡的一些注册信息，在调用qemu_new_nic时第一个参数就是NetClientInfo
+    int link_down; //link_down用来表示当前网卡状态是否down。
+    QTAILQ_ENTRY(NetClientState) next; //net表示所有的NetClientInfo结构都链接在net_clients上，用next域连接。
+    NetClientState *peer; // peer也是NetClientState结构，用来表示对端的网络端点，连接前后端网卡，如virtio前端网卡的NetClientState中peer指向tap设备的NetClientState，tap后端设备的NetClientState的peer指向virtio前端网卡的NetClientState。
+    NetQueue *incoming_queue; //  incoming_queue对应网卡的接受队列，所有的网络包都会被挂到该成员结构的packets链表上。
     char *model;
     char *name;
-    char info_str[256];
-    unsigned receive_disabled : 1;
-    NetClientDestructor *destructor;
-    unsigned int queue_index;
+    char info_str[256]; // 和 model 、name 都表示 网卡基本信息
+    unsigned receive_disabled : 1; // 表示是否禁止收包
+    NetClientDestructor *destructor; //网卡被删除是执行的函数
+    unsigned int queue_index; // queue_index，实际的虚拟网卡用结构NICState表示，里面有一个ncs的NetClientState数组，这里的queue_index表示就是当前NetClientState在这个ncs中的索引。
     unsigned rxfilter_notify_enabled:1;
     int vring_enable;
-    QTAILQ_HEAD(NetFilterHead, NetFilterState) filters;
+    QTAILQ_HEAD(NetFilterHead, NetFilterState) filters; // filters链表上挂有NetFilterState，这个结构用来在网卡进行包路由的时候进行过滤，作用类似于防火墙。
 };
 
 typedef struct NICState {
@@ -181,7 +182,7 @@ void net_socket_rs_init(SocketReadState *rs,
 /* NIC info */
 
 #define MAX_NICS 8
-
+//网卡信息用NICInfo表示，如mac地址、model、名字等，还有其对应的NetClientState，这个数据结构很重要，后面会单独介绍
 struct NICInfo {
     MACAddr macaddr;
     char *model;

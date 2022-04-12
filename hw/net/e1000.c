@@ -520,14 +520,18 @@ inc_tx_bcast_or_mcast_count(E1000State *s, const unsigned char *arr)
 static void
 e1000_send_packet(E1000State *s, const uint8_t *buf, int size)
 {
+    // 三个参数 ：
+    // E1000State *s,前端虚拟网卡
+    // const uint8_t *buf, 需要发送的数据
+    // int size buf 大小
     static const int PTCregs[6] = { PTC64, PTC127, PTC255, PTC511,
                                     PTC1023, PTC1522 };
 
-    NetClientState *nc = qemu_get_queue(s->nic);
+    NetClientState *nc = qemu_get_queue(s->nic); // 获取前端网卡的网络端点 NetClientState。
     if (s->phy_reg[PHY_CTRL] & MII_CR_LOOPBACK) {
-        nc->info->receive(nc, buf, size);
+        nc->info->receive(nc, buf, size); // loopback 模式直接调用 receive
     } else {
-        qemu_send_packet(nc, buf, size);
+        qemu_send_packet(nc, buf, size);  // 非 loopback 发包
     }
     inc_tx_bcast_or_mcast_count(s, buf);
     e1000x_increase_size_stats(s->mac_reg, PTCregs, size);
@@ -859,6 +863,8 @@ e1000_receive_iov(NetClientState *nc, const struct iovec *iov, int iovcnt)
     size_t desc_offset;
     size_t desc_size;
     size_t total_size;
+
+    //把数据放到e1000指定的各个描述符中，然后发送一个中断提醒内核收包，对e1000来说发送中断函数是set_ics，里面调用了set_interrupt_cause，在其中调用了pci_set_irq进行中断注入，这样虚拟机中的操作系统的e1000网卡驱动就能够将数据取走了。
 
     if (!e1000x_hw_rx_enabled(s->mac_reg)) {
         return -1;
@@ -1614,7 +1620,7 @@ static void pci_e1000_realize(PCIDevice *pci_dev, Error **errp)
                                sizeof(e1000_eeprom_template),
                                PCI_DEVICE_GET_CLASS(pci_dev)->device_id,
                                macaddr);
-
+    // 创建新的网卡
     d->nic = qemu_new_nic(&net_e1000_info, &d->conf,
                           object_get_typename(OBJECT(d)), dev->id, d);
 

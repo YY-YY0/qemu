@@ -192,10 +192,12 @@ ssize_t qemu_net_queue_send(NetQueue *queue,
     ssize_t ret;
 
     if (queue->delivering || !qemu_can_send_packet(sender)) {
+    	// 虚拟机发包时，这个后端网络的queue正在进行发包或者是当前网卡状态不允许发包，则将当前数据包加到queue的packets链表就返回。
+    	// 虚拟机收包时，检测queue状态
         qemu_net_queue_append(queue, sender, flags, data, size, sent_cb);
         return 0;
     }
-
+    // 调用qemu_net_queue_deliver进行发包，qemu_net_queue_deliver会把data和size表示的数据转换为一个iovec，并调用deliver 回调函数（qemu_net_client_setup 初始化的 qemu_deliver_packet_iov ）
     ret = qemu_net_queue_deliver(queue, sender, flags, data, size);
     if (ret == 0) {
         qemu_net_queue_append(queue, sender, flags, data, size, sent_cb);

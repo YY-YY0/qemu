@@ -253,11 +253,13 @@ static void qemu_net_client_setup(NetClientState *nc,
 
     if (peer) {
         assert(!peer->peer);
+	// 建立网卡（NetClientState）和后端设备（NetClientState）之间的关联
         nc->peer = peer;
         peer->peer = nc;
     }
+    // 插入链表 方便查找
     QTAILQ_INSERT_TAIL(&net_clients, nc, next);
-
+    // 为nc分配一个incoming_queue，并且设置queue的分发函数为qemu_deliver_packet_iov
     nc->incoming_queue = qemu_new_net_queue(qemu_deliver_packet_iov, nc);
     nc->destructor = destructor;
     QTAILQ_INIT(&nc->filters);
@@ -271,8 +273,9 @@ NetClientState *qemu_new_net_client(NetClientInfo *info,
     NetClientState *nc;
 
     assert(info->size >= sizeof(NetClientState));
-
+    //这里为什么申请 State 对象，但是大小按照info size内存申请？难道是记录的 state 大小？ 已解决 info->size==sizeof(TAPState) ，实际上申请了一个 TAPState
     nc = g_malloc0(info->size);
+    // 添加 nc （NetClientState  ） 到 netclients 链表
     qemu_net_client_setup(nc, info, peer, model, name,
                           qemu_net_client_destructor);
 
@@ -285,21 +288,24 @@ NICState *qemu_new_nic(NetClientInfo *info,
                        const char *name,
                        void *opaque)
 {
-    NetClientState **peers = conf->peers.ncs;
+    NetClientState **peers = conf->peers.ncs; // peer 是在 set_netdev 完成初始化
     NICState *nic;
-    int i, queues = MAX(1, conf->peers.queues);
+    int i, queues = MAX(1, conf->peers.queues); // 获取 后端 tap 的队列个数 ，也是在 set_netdev 完成初始化的
 
     assert(info->type == NET_CLIENT_DRIVER_NIC);
     assert(info->size >= sizeof(NICState));
-
+    // 分配NICState结构以及queues个NetClientState结构，nic->ncs指向NICState的末尾结构，也就是 NetClientState 的开始位置
     nic = g_malloc0(info->size + sizeof(NetClientState) * queues);
     nic->ncs = (void *)nic + info->size;
     nic->conf = conf;
     nic->opaque = opaque;
 
     for (i = 0; i < queues; i++) {
+    	// 初始化  NetClientState (虚拟网卡)
+    	// peer 表示的是对应后端网络设备的 NetClientState
         qemu_net_client_setup(&nic->ncs[i], info, peers[i], model, name,
                               NULL);
+	// 调用nic->ncs[i].queue_index=i为当前的NetClientState (虚拟网卡)设置在ncs的索引号
         nic->ncs[i].queue_index = i;
     }
 
@@ -631,7 +637,8 @@ static ssize_t qemu_send_packet_async_with_flags(NetClientState *sender,
 {
     NetQueue *queue;
     int ret;
-
+    // 虚拟机发包时 sender是前端网卡的端点NetClientState
+    // 虚拟机收包时 sender 是 后端 tap
 #ifdef DEBUG_NET
     printf("qemu_send_packet_async:\n");
     qemu_hexdump((const char *)buf, stdout, "net", size);
@@ -640,7 +647,8 @@ static ssize_t qemu_send_packet_async_with_flags(NetClientState *sender,
     if (sender->link_down || !sender->peer) {
         return size;
     }
-
+    // 使用前后端网卡的NetClientState调用两次filter_receive函数，判断该数据包是否能发送出去
+    // filter_receive对NetClientState对应的filters链表进行遍历，根据NetFilterState进行判断
     /* Let filters handle the packet first */
     ret = filter_receive(sender, NET_FILTER_DIRECTION_TX,
                          sender, flags, buf, size, sent_cb);
@@ -653,7 +661,7 @@ static ssize_t qemu_send_packet_async_with_flags(NetClientState *sender,
     if (ret) {
         return ret;
     }
-
+    // 通过sender->peer->incoming_queue得到该sender端点对应的后端设备端点的incoming_queue并赋值到queue
     queue = sender->peer->incoming_queue;
 
     return qemu_net_queue_send(queue, sender, flags, buf, size, sent_cb);
@@ -715,9 +723,9 @@ ssize_t qemu_deliver_packet_iov(NetClientState *sender,
                                 int iovcnt,
                                 void *opaque)
 {
-    NetClientState *nc = opaque;
+    NetClientState *nc = opaque; // 获取当前queue 对应的 NetClientState
     int ret;
-
+    // 检查网卡是否处于down状态以及是否允许收包
     if (nc->link_down) {
         return iov_size(iov, iovcnt);
     }
@@ -725,7 +733,9 @@ ssize_t qemu_deliver_packet_iov(NetClientState *sender,
     if (nc->receive_disabled) {
         return 0;
     }
-
+    // 检查通过，调用NetClientState中NetClientInfo中的recieve_iov回调函数
+    // tap后端设备定义及其recieve_iov成员为 tap_receive_iov 函数
+    // 前端网卡设备定义 是 e1000_receive_iov  （e1000_receive_iov 设置）
     if (nc->info->receive_iov && !(flags & QEMU_NET_PACKET_FLAG_RAW)) {
         ret = nc->info->receive_iov(nc, iov, iovcnt);
     } else {
@@ -870,24 +880,24 @@ static int net_init_nic(const Netdev *netdev, const char *name,
                         NetClientState *peer, Error **errp)
 {
     int idx;
-    NICInfo *nd;
+    NICInfo *nd; //网卡信息用NICInfo表示，如mac地址、model、名字等，还有其对应的NetClientState，这个数据结构很重要，后面会单独介绍
     const NetLegacyNicOptions *nic;
 
     assert(netdev->type == NET_CLIENT_DRIVER_NIC);
     nic = &netdev->u.nic;
 
-    idx = nic_get_free_idx();
+    idx = nic_get_free_idx(); // nd_table 中找到一个空闲的 index ，nd_table 大小上限 8，QEMU 最多可配置8 个 网络设备
     if (idx == -1 || nb_nics >= MAX_NICS) {
         error_setg(errp, "too many NICs");
         return -1;
     }
 
-    nd = &nd_table[idx];
+    nd = &nd_table[idx]; // 根据 index 取到 空闲 网络设备 item （NICInfo），用于存储当前前端网卡信息
 
     memset(nd, 0, sizeof(*nd));
 
     if (nic->has_netdev) {
-        nd->netdev = qemu_find_netdev(nic->netdev);
+        nd->netdev = qemu_find_netdev(nic->netdev);  // 找到 netdev 指定 设备
         if (!nd->netdev) {
             error_setg(errp, "netdev '%s' not found", nic->netdev);
             return -1;
@@ -915,7 +925,7 @@ static int net_init_nic(const Netdev *netdev, const char *name,
                    "NIC cannot have multicast MAC address (odd 1st byte)");
         return -1;
     }
-    qemu_macaddr_default_if_unset(&nd->macaddr);
+    qemu_macaddr_default_if_unset(&nd->macaddr); // 如果未设置 mac 地址 会设置一个
 
     if (nic->has_vectors) {
         if (nic->vectors > 0x7ffffff) {
@@ -972,6 +982,7 @@ static int net_client_init1(const void *object, bool is_netdev, Error **errp)
     NetClientState *peer = NULL;
 
     if (is_netdev) {
+    	// netdev 初始化逻辑，检查object 中的参数 并 调用 net_client_init_fun 数组对应类型中 的 初始化函数
         netdev = object;
         name = netdev->id;
 
@@ -983,10 +994,11 @@ static int net_client_init1(const void *object, bool is_netdev, Error **errp)
             return -1;
         }
     } else {
+        // net（前端） 初始化逻辑
         const NetLegacy *net = object;
         const NetLegacyOptions *opts = net->opts;
         legacy.id = net->id;
-        netdev = &legacy;
+        netdev = &legacy;  // 参数初始化 Netdev 类型的变量 netdev
         /* missing optional values have been initialized to "all bits zero" */
         name = net->has_id ? net->id : net->name;
 
@@ -1048,10 +1060,11 @@ static int net_client_init1(const void *object, bool is_netdev, Error **errp)
         /* Do not add to a vlan if it's a nic with a netdev= parameter. */
         if (netdev->type != NET_CLIENT_DRIVER_NIC ||
             !opts->u.nic.data->has_netdev) {
-            peer = net_hub_add_port(net->has_vlan ? net->vlan : 0, NULL);
+            peer = net_hub_add_port(net->has_vlan ? net->vlan : 0, NULL);  // 前端没有指定后端设备时，QEMU 会把前端设备添加到QEMU 定义的  hub，相当于一个 默认的 netdev
         }
     }
 
+    // 针对不同命令行参数 调用不同类型的 网络设备初始化函数 ，针对 -net nic 和 -net netdev 会分别调用 net_init_nic和net_init_tap
     if (net_client_init_fun[netdev->type](netdev, name, peer, errp) < 0) {
         /* FIXME drop when all init functions store an Error */
         if (errp && !*errp) {
@@ -1063,7 +1076,7 @@ static int net_client_init1(const void *object, bool is_netdev, Error **errp)
     return 0;
 }
 
-
+// 网络设备参数 解析 -netdev -net 最终都会走到这里，区别是 is_netdev 传入值不同
 int net_client_init(QemuOpts *opts, bool is_netdev, Error **errp)
 {
     void *object = NULL;
@@ -1103,13 +1116,13 @@ int net_client_init(QemuOpts *opts, bool is_netdev, Error **errp)
     }
 
     if (is_netdev) {
-        visit_type_Netdev(v, NULL, (Netdev **)&object, &err);
+        visit_type_Netdev(v, NULL, (Netdev **)&object, &err); // 解析netdev 参数，参数最终会解析到 object,object对象保存了QEMU命令行参数信息
     } else {
-        visit_type_NetLegacy(v, NULL, (NetLegacy **)&object, &err);
+        visit_type_NetLegacy(v, NULL, (NetLegacy **)&object, &err); // 解析 net 参数，参数最终会解析到 object,object对象保存了QEMU命令行参数信息
     }
 
     if (!err) {
-        ret = net_client_init1(object, is_netdev, &err);
+        ret = net_client_init1(object, is_netdev, &err); // net 和  netdev 参数解析流程都会走到这里
     }
 
     if (is_netdev) {
@@ -1517,12 +1530,12 @@ int net_init_clients(void)
         qemu_add_vm_change_state_handler(net_vm_change_state_handler, NULL);
 
     QTAILQ_INIT(&net_clients);
-
+    // net_init_netdev  -netdev 参数解析过程
     if (qemu_opts_foreach(qemu_find_opts("netdev"),
                           net_init_netdev, NULL, NULL)) {
         return -1;
     }
-
+    // net_init_client  -net 参数解析过程
     if (qemu_opts_foreach(net, net_init_client, NULL, NULL)) {
         return -1;
     }

@@ -21,8 +21,8 @@
 #include <linux/ioctl.h>
 
 /* Ioctl defines */
-#define TUNSETIFF     _IOW('T', 202, int)
-#define TUNGETFEATURES _IOR('T', 207, unsigned int)
+#define TUNSETIFF     _IOW('T', 202, int) // 初始化 ifreq
+#define TUNGETFEATURES _IOR('T', 207, unsigned int) // 获取驱动特性
 #define TUNSETOFFLOAD  _IOW('T', 208, unsigned int)
 #define TUNGETIFF      _IOR('T', 210, unsigned int)
 #define TUNSETSNDBUF   _IOW('T', 212, int)

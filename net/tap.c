@@ -69,6 +69,9 @@ static void tap_writable(void *opaque);
 
 static void tap_update_fd_handler(TAPState *s)
 {
+    // 将tap设备的fd加入到iohandler_ctx所在的AioContext中
+    // tap_send会在tap设备有数据可读的时候调用，这个时候表示有新的数据发送到了tap设备，tap设备会将其发送到虚拟机的网卡，这对应tap设备的收包
+    // tap_writable会在tap设备有数据可写的时候调用，只有当调用writev向tap设备发包不成功的时候才会调用tap_write_poll来设置可写时间，所以理论上正常情况下tap_writable函数是不会被调用的
     qemu_set_fd_handler(s->fd,
                         s->read_poll && s->enabled ? tap_send : NULL,
                         s->write_poll && s->enabled ? tap_writable : NULL,
@@ -101,9 +104,9 @@ static ssize_t tap_write_packet(TAPState *s, const struct iovec *iov, int iovcnt
     ssize_t len;
 
     do {
-        len = writev(s->fd, iov, iovcnt);
+        len = writev(s->fd, iov, iovcnt); // 发送数据到 tap 设备
     } while (len == -1 && errno == EINTR);
-
+    // 由于tap设备已经桥接到了br0网桥，所以这个时候网桥会把这个包进行转发，转到ens33物理网卡之后，ens33会把这个包发送出去。
     if (len == -1 && errno == EAGAIN) {
         tap_write_poll(s, true);
         return 0;
@@ -128,7 +131,7 @@ static ssize_t tap_receive_iov(NetClientState *nc, const struct iovec *iov,
         iovcnt++;
     }
 
-    return tap_write_packet(s, iovp, iovcnt);
+    return tap_write_packet(s, iovp, iovcnt); // 发送数据到 tap 设备
 }
 
 static ssize_t tap_receive_raw(NetClientState *nc, const uint8_t *buf, size_t size)
@@ -188,7 +191,7 @@ static void tap_send(void *opaque)
     while (true) {
         uint8_t *buf = s->buf;
 
-        size = tap_read_packet(s->fd, s->buf, sizeof(s->buf));
+        size = tap_read_packet(s->fd, s->buf, sizeof(s->buf)); // 读取到达 tap的数据包
         if (size <= 0) {
             break;
         }
@@ -198,7 +201,7 @@ static void tap_send(void *opaque)
             size -= s->host_vnet_hdr_len;
         }
 
-        size = qemu_send_packet_async(&s->nc, buf, size, tap_send_completed);
+        size = qemu_send_packet_async(&s->nc, buf, size, tap_send_completed); // 转发数据包 到 sender peer (前端) incoming_queue
         if (size == 0) {
             tap_read_poll(s, false);
             break;
@@ -369,15 +372,15 @@ static TAPState *net_tap_fd_init(NetClientState *peer,
 {
     NetClientState *nc;
     TAPState *s;
-
+    // 新建一个 NetClientState 对象(实际上申请了一个 TAPState) ，使用 net_tap_info 初始化
     nc = qemu_new_net_client(&net_tap_info, peer, model, name);
-
+    // 通过NetClientState 转换得到 TAPState
     s = DO_UPCAST(TAPState, nc, nc);
-
+    // TAPState 初始化
     s->fd = fd;
     s->host_vnet_hdr_len = vnet_hdr ? sizeof(struct virtio_net_hdr) : 0;
     s->using_vnet_hdr = false;
-    s->has_ufo = tap_probe_has_ufo(s->fd);
+    s->has_ufo = tap_probe_has_ufo(s->fd);// fd域设置成tap设备的fd
     s->enabled = true;
     tap_set_offload(&s->nc, 0, 0, 0, 0, 0);
     /*
@@ -387,6 +390,7 @@ static TAPState *net_tap_fd_init(NetClientState *peer,
     if (tap_probe_vnet_hdr_len(s->fd, s->host_vnet_hdr_len)) {
         tap_fd_set_vnet_hdr_len(s->fd, s->host_vnet_hdr_len);
     }
+    // 将fd 加入 AioContext
     tap_read_poll(s, true);
     s->vhost_net = NULL;
 
@@ -616,6 +620,7 @@ static int net_tap_init(const NetdevTapOptions *tap, int *vnet_hdr,
         vnet_hdr_required = 0;
     }
 
+    // 打开 tap 设备，并进行初始化，返回一个可用的fd
     TFR(fd = tap_open(ifname, ifname_sz, vnet_hdr, vnet_hdr_required,
                       mq_required, errp));
     if (fd < 0) {
@@ -645,9 +650,9 @@ static void net_init_tap_one(const NetdevTapOptions *tap, NetClientState *peer,
                              int vnet_hdr, int fd, Error **errp)
 {
     Error *err = NULL;
-    TAPState *s = net_tap_fd_init(peer, model, name, fd, vnet_hdr);
+    TAPState *s = net_tap_fd_init(peer, model, name, fd, vnet_hdr);  // 核心流程
     int vhostfd;
-
+    // 设置发包空间大小
     tap_set_sndbuf(s->fd, tap, &err);
     if (err) {
         error_propagate(errp, err);
@@ -750,7 +755,7 @@ int net_init_tap(const Netdev *netdev, const char *name,
 
     assert(netdev->type == NET_CLIENT_DRIVER_TAP);
     tap = &netdev->u.tap;
-    queues = tap->has_queues ? tap->queues : 1;
+    queues = tap->has_queues ? tap->queues : 1;  // 如果不指定网卡队列默认为1
     vhostfdname = tap->has_vhostfd ? tap->vhostfd : NULL;
 
     /* QEMU vlans does not support multiqueue tap, in this case peer is set.
@@ -892,6 +897,8 @@ free_fail:
         }
 
         for (i = 0; i < queues; i++) {
+	    // 不指定队列数量，默认这里只循环一次
+	    // 调用了tap_open来打开tap设备
             fd = net_tap_init(tap, &vnet_hdr, i >= 1 ? "no" : script,
                               ifname, sizeof ifname, queues > 1, errp);
             if (fd == -1) {
@@ -905,7 +912,7 @@ free_fail:
                     return -1;
                 }
             }
-
+            // 设置tap发包空间大小，初始化 NetClientState 并加入链表
             net_init_tap_one(tap, peer, "tap", name, ifname,
                              i >= 1 ? "no" : script,
                              i >= 1 ? "no" : downscript,
@@ -915,6 +922,7 @@ free_fail:
                 close(fd);
                 return -1;
             }
+	    // net_tap_fd_init完成之后，net_init_tap也基本完成了，QEMU的主循环已经开始监听tap设备fd的可读事件了
         }
     }
 

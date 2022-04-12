@@ -37,7 +37,7 @@
 #include "qemu/cutils.h"
 
 #define PATH_NET_TUN "/dev/net/tun"
-
+// 打开 tap 设备 “/dev/net/tun”
 int tap_open(char *ifname, int ifname_size, int *vnet_hdr,
              int vnet_hdr_required, int mq_required, Error **errp)
 {
@@ -53,7 +53,7 @@ int tap_open(char *ifname, int ifname_size, int *vnet_hdr,
     }
     memset(&ifr, 0, sizeof(ifr));
     ifr.ifr_flags = IFF_TAP | IFF_NO_PI;
-
+    // 获取tap  特性，初始化 ifreq
     if (ioctl(fd, TUNGETFEATURES, &features) == -1) {
         error_report("warning: TUNGETFEATURES failed: %s", strerror(errno));
         features = 0;
@@ -101,6 +101,7 @@ int tap_open(char *ifname, int ifname_size, int *vnet_hdr,
         pstrcpy(ifr.ifr_name, IFNAMSIZ, ifname);
     else
         pstrcpy(ifr.ifr_name, IFNAMSIZ, "tap%d");
+    // attach QEMU 到 tap 设备
     ret = ioctl(fd, TUNSETIFF, (void *) &ifr);
     if (ret != 0) {
         if (ifname[0] != '\0') {
@@ -114,6 +115,7 @@ int tap_open(char *ifname, int ifname_size, int *vnet_hdr,
         return -1;
     }
     pstrcpy(ifname, ifname_size, ifr.ifr_name);
+    // 设置 tap 为非阻塞
     fcntl(fd, F_SETFL, O_NONBLOCK);
     return fd;
 }

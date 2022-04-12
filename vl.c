@@ -4435,7 +4435,7 @@ int main(int argc, char **argv, char **envp)
     }
 
     colo_info_init();
-
+    // 解析网卡设备参数 netdev \ nic \ net 等
     if (net_init_clients() < 0) {
         exit(1);
     }

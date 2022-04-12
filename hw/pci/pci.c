@@ -1756,7 +1756,7 @@ PciInfoList *qmp_query_pci(Error **errp)
 
     return head;
 }
-
+// QEMU 支持的所有 网卡型号
 static const char * const pci_nic_models[] = {
     "ne2k_pci",
     "i82551",
@@ -1795,25 +1795,27 @@ PCIDevice *pci_nic_init_nofail(NICInfo *nd, PCIBus *rootbus,
     int i;
 
     if (qemu_show_nic_models(nd->model, pci_nic_models)) {
+    	// 展示所有网卡型号，用于 help
         exit(0);
     }
-
+    // 获取指定model在 pci_nic_models的 索引，不指定model 则返回 default_model 索引
     i = qemu_find_nic_model(nd, pci_nic_models, default_model);
     if (i < 0) {
         exit(1);
     }
-
+    //pci_get_bus_devfn函数返回设备要挂载到的Bus以及其设备号devfn，如果不指定设备的地址，那么网卡会被挂载到根PCI总线上
     bus = pci_get_bus_devfn(&devfn, rootbus, devaddr);
     if (!bus) {
         error_report("Invalid PCI device address %s for device %s",
                      devaddr, pci_nic_names[i]);
         exit(1);
     }
-
+    // 创建PCI 设备 的 标准化操作 1 新建 PCI 设备对象
     pci_dev = pci_create(bus, devfn, pci_nic_names[i]);
     dev = &pci_dev->qdev;
+    // 创建PCI 设备 的 标准化操作 2 建立PCI设备和netdev的对应关系，创建并初始化虚拟网卡设备
     qdev_set_nic_properties(dev, nd);
-
+    // 创建PCI 设备 的 标准化操作 3 具现化 （e1000 网卡具现化函数是 pci_e1000_realize）
     object_property_set_bool(OBJECT(dev), true, "realized", &err);
     if (err) {
         error_report_err(err);

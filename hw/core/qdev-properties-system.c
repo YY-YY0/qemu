@@ -245,7 +245,7 @@ static void set_netdev(Object *obj, Visitor *v, const char *name,
 {
     DeviceState *dev = DEVICE(obj);
     Property *prop = opaque;
-    NICPeers *peers_ptr = qdev_get_prop_ptr(dev, prop);
+    NICPeers *peers_ptr = qdev_get_prop_ptr(dev, prop); //set_netdev函数中的peers_ptr变量即为 E1000State.NICConf.NICPeers成员的地址。
     NetClientState **ncs = peers_ptr->ncs;
     NetClientState *peers[MAX_QUEUE_NUM];
     Error *local_err = NULL;
@@ -256,16 +256,17 @@ static void set_netdev(Object *obj, Visitor *v, const char *name,
         qdev_prop_set_after_realize(dev, name, errp);
         return;
     }
-
+    // name 就是 NetClientState 的名字，这里把 name参数保存在 str 变量中
     visit_type_str(v, name, &str, &local_err);
     if (local_err) {
         error_propagate(errp, local_err);
         return;
     }
-
+    // str 调用  qemu_find_net_clients_except 在输出型参数 peers 返回所有 NetClientState
     queues = qemu_find_net_clients_except(str, peers,
                                           NET_CLIENT_DRIVER_NIC,
                                           MAX_QUEUE_NUM);
+    // 返回值 queues 表示在peers 中有效的个数
     if (queues == 0) {
         err = -ENOENT;
         goto out;
@@ -278,6 +279,7 @@ static void set_netdev(Object *obj, Visitor *v, const char *name,
     }
 
     for (i = 0; i < queues; i++) {
+    	// copy peers 中的 queues 个指针到 虚拟网卡的 ncs结构，并且记录queue index
         if (peers[i] == NULL) {
             err = -ENOENT;
             goto out;
@@ -296,7 +298,7 @@ static void set_netdev(Object *obj, Visitor *v, const char *name,
         ncs[i] = peers[i];
         ncs[i]->queue_index = i;
     }
-
+    // 设置 queues 为后端tap队列数
     peers_ptr->queues = queues;
 
 out:
@@ -428,9 +430,9 @@ void qdev_prop_set_netdev(DeviceState *dev, const char *name,
 
 void qdev_set_nic_properties(DeviceState *dev, NICInfo *nd)
 {
-    qdev_prop_set_macaddr(dev, "mac", nd->macaddr.a);
+    qdev_prop_set_macaddr(dev, "mac", nd->macaddr.a);  // 设置前端网卡的mac地址 到PCI 设备
     if (nd->netdev) {
-        qdev_prop_set_netdev(dev, "netdev", nd->netdev);
+        qdev_prop_set_netdev(dev, "netdev", nd->netdev); // 设置 netdev 属性，建立网卡和 netdev （NetClientState） 对应关系 netdev 属性见 DEFINE_NIC_PROPERTIES
     }
     if (nd->nvectors != DEV_NVECTORS_UNSPECIFIED &&
         object_property_find(OBJECT(dev), "vectors", NULL)) {

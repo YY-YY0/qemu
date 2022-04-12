@@ -236,7 +236,7 @@ static void pc_init1(MachineState *machine,
     /* init basic PC hardware */
     pc_basic_device_init(isa_bus, pcms->gsi, &rtc_state, true,
                          (pcms->vmport != ON_OFF_AUTO_ON), 0x4);
-
+    // 初始化所有虚拟网卡
     pc_nic_init(isa_bus, pci_bus);
 
     ide_drive_get(hd, ARRAY_SIZE(hd));

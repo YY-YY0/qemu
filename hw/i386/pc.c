@@ -1639,12 +1639,12 @@ void pc_nic_init(ISABus *isa_bus, PCIBus *pci_bus)
 
     rom_set_order_override(FW_CFG_ORDER_OVERRIDE_NIC);
     for (i = 0; i < nb_nics; i++) {
-        NICInfo *nd = &nd_table[i];
+        NICInfo *nd = &nd_table[i]; // 遍历所有虚拟网卡，并进行初始化
 
         if (!pci_bus || (nd->model && strcmp(nd->model, "ne2k_isa") == 0)) {
-            pc_init_ne2k_isa(isa_bus, nd);
+            pc_init_ne2k_isa(isa_bus, nd); // 没有 pci 总线时的初始化流程
         } else {
-            pci_nic_init_nofail(nd, pci_bus, "e1000", NULL);
+            pci_nic_init_nofail(nd, pci_bus, "e1000", NULL); // 有设置 PCI 总线 ， 网卡类型默认是 e1000  (主要流程)
         }
     }
     rom_reset_order_override();
