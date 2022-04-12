@@ -191,8 +191,8 @@ struct BusClass {
     ObjectClass parent_class;
 
     /* FIXME first arg should be BusState */
-    void (*print_dev)(Monitor *mon, DeviceState *dev, int indent);
-    char *(*get_dev_path)(DeviceState *dev);
+    void (*print_dev)(Monitor *mon, DeviceState *dev, int indent); // print_dev打印总线上的一个设备。
+    char *(*get_dev_path)(DeviceState *dev); //get_dev_path/get_fw_dev_path得到设备路径以及在firmware中的路径
     /*
      * This callback is used to create Open Firmware device path in accordance
      * with OF spec http://forthworks.com/standards/of1275.pdf. Individual bus
@@ -200,13 +200,13 @@ struct BusClass {
      */
     char *(*get_fw_dev_path)(DeviceState *dev);
     void (*reset)(BusState *bus);
-    BusRealize realize;
-    BusUnrealize unrealize;
+    BusRealize realize; //realize是表示Bus进行realize的回调函数
+    BusUnrealize unrealize; //unrealize则是销毁时的回调函数
 
     /* maximum devices allowed on the bus, 0: no limit. */
-    int max_dev;
+    int max_dev; // max_dev表示的是该Bus上允许的最大设备
     /* number of automatically allocated bus ids (e.g. ide.0) */
-    int automatic_ids;
+    int automatic_ids; //automatic_ids表示自动生成bus id的序列号，如ide.0、ide.1等
 };
 
 typedef struct BusChild {
@@ -223,13 +223,13 @@ typedef struct BusChild {
  */
 struct BusState {
     Object obj;
-    DeviceState *parent;
+    DeviceState *parent; //parent表示总线所在的设备，因为总线不能独立产生，必须依赖于一个设备，如PCI总线是由PCI桥产生的，USB总线是由USB控制器产生的，SCSI总线是由SCSI控制器产生的，这里的parent即表示总线的父设备。
     char *name;
-    HotplugHandler *hotplug_handler;
-    int max_index;
+    HotplugHandler *hotplug_handler; // hotplug_handler指向一个处理热插拔的处理器，因为很多总线允许设备热插拔，这个结构就是用来完成热插拔处理的。
+    int max_index; //max_index表示插在该总线上的设备个数，children用来表示连接在该总线上面的所有设备
     bool realized;
     QTAILQ_HEAD(ChildrenHead, BusChild) children;
-    QLIST_ENTRY(BusState) sibling;
+    QLIST_ENTRY(BusState) sibling; //sibling用来连接在一条总线上的设备
 };
 
 struct Property {
