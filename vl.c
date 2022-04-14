@@ -4435,7 +4435,7 @@ int main(int argc, char **argv, char **envp)
     }
 
     colo_info_init();
-    // ½âÎöÍø¿¨Éè±¸²ÎÊı netdev \ nic \ net µÈ
+    // è§£æç½‘å¡è®¾å¤‡å‚æ•° netdev \ nic \ net ç­‰
     if (net_init_clients() < 0) {
         exit(1);
     }

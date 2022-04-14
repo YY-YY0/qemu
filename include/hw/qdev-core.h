@@ -96,7 +96,7 @@ typedef struct DeviceClass {
     ObjectClass parent_class;
     /*< public >*/
 
-    DECLARE_BITMAP(categories, DEVICE_CATEGORY_MAX);
+    DECLARE_BITMAP(categories, DEVICE_CATEGORY_MAX); //categories表示设备的种类，如DEVICE_CATEGORY_USB表示USB设备，DEVICE_CATEGORY_NETWORK表示网络设备，DEVICE_CATEGORY_DISPLAY表示显卡设备
     const char *fw_name;
     const char *desc;
     Property *props;
@@ -164,7 +164,7 @@ struct DeviceState {
     /*< public >*/
 
     const char *id;
-    bool realized;
+    bool realized; //realized表示设备是否已经被具现化。
     bool pending_deleted_event;
     QemuOpts *opts;
     int hotplugged;
@@ -173,7 +173,7 @@ struct DeviceState {
     QLIST_HEAD(, BusState) child_bus;
     int num_child_bus;
     int instance_id_alias;
-    int alias_required_for_version;
+    int alias_required_for_version; // alias_required_for_version用于热迁移时，只有当这个值大于或等于设备VMStateDescription的minimum_version_id域时设备才能进行。
 };
 
 struct DeviceListener {
@@ -223,13 +223,13 @@ typedef struct BusChild {
  */
 struct BusState {
     Object obj;
-    DeviceState *parent;
+    DeviceState *parent; //parent表示总线所在的设备，因为总线不能独立产生，必须依赖于一个设备，如PCI总线是由PCI桥产生的，USB总线是由USB控制器产生的，SCSI总线是由SCSI控制器产生的，这里的parent即表示总线的父设备
     char *name;
-    HotplugHandler *hotplug_handler;
-    int max_index;
+    HotplugHandler *hotplug_handler; //指向一个处理热插拔的处理器，因为很多总线允许设备热插拔，这个结构就是用来完成热插拔处理的。
+    int max_index; // max_index表示插在该总线上的设备个数，children用来表示连接在该总线上面的所有设备。
     bool realized;
     QTAILQ_HEAD(ChildrenHead, BusChild) children;
-    QLIST_ENTRY(BusState) sibling;
+    QLIST_ENTRY(BusState) sibling; // sibling用来连接在一条总线上的设备
 };
 
 struct Property {

@@ -366,7 +366,7 @@ static void pci_edu_realize(PCIDevice *pdev, Error **errp)
         return;
     }
 
-    // 3. memory_region_init_io初始化了一个edu->mmio，表示的是该设备的MMIO，其大小为1MB
+    // 3. memory_region_init_io 初始化了一个 edu->mmio，表示的是该设备的MMIO，其大小为1MB
     // 指定 EDU 设备 PCI 操作的回调函数 edu_mmio_ops
     memory_region_init_io(&edu->mmio, OBJECT(edu), &edu_mmio_ops, edu,
                     "edu-mmio", 1 << 20);
