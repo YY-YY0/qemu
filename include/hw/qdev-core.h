@@ -96,7 +96,7 @@ typedef struct DeviceClass {
     ObjectClass parent_class;
     /*< public >*/
 
-    DECLARE_BITMAP(categories, DEVICE_CATEGORY_MAX);
+    DECLARE_BITMAP(categories, DEVICE_CATEGORY_MAX); //categories表示设备的种类，如DEVICE_CATEGORY_USB表示USB设备，DEVICE_CATEGORY_NETWORK表示网络设备，DEVICE_CATEGORY_DISPLAY表示显卡设备
     const char *fw_name;
     const char *desc;
     Property *props;
@@ -164,7 +164,7 @@ struct DeviceState {
     /*< public >*/
 
     const char *id;
-    bool realized;
+    bool realized; //realized表示设备是否已经被具现化�?
     bool pending_deleted_event;
     QemuOpts *opts;
     int hotplugged;
@@ -173,7 +173,7 @@ struct DeviceState {
     QLIST_HEAD(, BusState) child_bus;
     int num_child_bus;
     int instance_id_alias;
-    int alias_required_for_version;
+    int alias_required_for_version; // alias_required_for_version用于热迁移时，只有当这个值大于或等于设备VMStateDescription的minimum_version_id域时设备才能进行�?
 };
 
 struct DeviceListener {
